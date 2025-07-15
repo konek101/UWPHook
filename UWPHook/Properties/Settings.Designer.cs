@@ -172,6 +172,7 @@ namespace UWPHook.Properties {
         [global::System.Configuration.DefaultSettingValueAttribute(@"<?xml version=""1.0"" encoding=""utf-16""?>
 <ArrayOfString xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"">
   <string>any</string>
+  <string>official</string>
   <string>alternate</string>
   <string>blurred</string>
   <string>white_logo</string>

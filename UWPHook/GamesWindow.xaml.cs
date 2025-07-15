@@ -11,6 +11,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -324,6 +325,7 @@ namespace UWPHook
                 var gameGridsHorizontal = api.GetGameGrids(game.Id, "460x215,920x430");
                 var gameHeroes = api.GetGameHeroes(game.Id);
                 var gameLogos = api.GetGameLogos(game.Id);
+                var gameIcons = api.GetGameIcons(game.Id);
 
                 Log.Verbose("Game ID: " + game.Id);
 
@@ -331,13 +333,15 @@ namespace UWPHook
                     gameGridsVertical,
                     gameGridsHorizontal,
                     gameHeroes,
-                    gameLogos
+                    gameLogos,
+                    gameIcons
                 );
 
                 var gridsVertical = await gameGridsVertical;
                 var gridsHorizontal = await gameGridsHorizontal;
                 var heroes = await gameHeroes;
                 var logos = await gameLogos;
+                var icons = await gameIcons;
 
                 List<Task> saveImagesTasks = new List<Task>();
 
@@ -363,6 +367,12 @@ namespace UWPHook
                 {
                     var logo = logos[0];
                     saveImagesTasks.Add(SaveImage(logo.Url, $"{tmpGridDirectory}\\{gameId}_logo.png", ImageFormat.Png));
+                }
+
+                if (icons != null && icons.Length > 0)
+                {
+                    var icon = icons[0];
+                    saveImagesTasks.Add(SaveImage(icon.Url, $"{tmpGridDirectory}\\{gameId}_icon.png", ImageFormat.Png));
                 }
 
                 await Task.WhenAll(saveImagesTasks);
@@ -414,7 +424,7 @@ namespace UWPHook
 
                 foreach (var app in selected_apps)
                 {
-                    app.Icon = app.widestSquareIcon();
+                    //app.Icon = app.widestSquareIcon();
 
                     if (downloadGridImages)
                     {
@@ -451,27 +461,14 @@ namespace UWPHook
                         {
                             foreach (var app in selected_apps)
                             {
-                                try
+                                await Task.Run(() =>
                                 {
-                                    app.Icon = PersistAppIcon(app);
-                                    Log.Verbose("Defaulting to app.Icon for app " + app.Name);
-                                }
-                                catch (System.IO.IOException)
-                                {
-                                    Log.Verbose("Using backup icon for app " + app.Name);
-
-                                    await Task.Run(() =>
-                                    {
-                                        string tmpGridDirectory = Path.GetTempPath() + "UWPHook\\tmp_grid\\";
-
-                                        SafellyCreateTmpGridDirectory(tmpGridDirectory);
-
-                                        string[] images = Directory.GetFiles(tmpGridDirectory);
-
-                                        UInt64 gameId = GenerateSteamGridAppId(app.Name, exePath);
-                                        app.Icon = PersistAppIcon(app, tmpGridDirectory + gameId + "_logo.png");
-                                    });
-                                }
+                                    string tmpGridDirectory = Path.GetTempPath() + "UWPHook\\tmp_grid\\";
+                                    SafellyCreateTmpGridDirectory(tmpGridDirectory);
+                                    string[] images = Directory.GetFiles(tmpGridDirectory);
+                                    UInt64 gameId = GenerateSteamGridAppId(app.Name, exePath);
+                                    app.Icon = PersistAppIcon(app, tmpGridDirectory + gameId + "_icon.png");
+                                });
 
                                 VDFEntry newApp = new VDFEntry()
                                 {
@@ -623,6 +620,35 @@ namespace UWPHook
 
             return dest_file;
         }
+        [Flags]
+        private enum ProcessAccessFlags : uint
+        {
+            QueryLimitedInformation = 0x00001000
+        }
+        [DllImport("kernel32.dll", SetLastError = true)]  
+        private static extern bool QueryFullProcessImageName(
+            [In] IntPtr hProcess,
+            [In] int dwFlags,
+            [Out] StringBuilder lpExeName,
+            ref int lpdwSize);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(
+           ProcessAccessFlags processAccess,
+           bool bInheritHandle,
+           int processId);
+
+        String GetProcessFilename(Process p)
+        { 
+         int capacity = 2000;
+         StringBuilder builder = new StringBuilder(capacity);
+         IntPtr ptr = OpenProcess(ProcessAccessFlags.QueryLimitedInformation, false, p.Id);
+         if (!QueryFullProcessImageName(ptr, 0, builder, ref capacity))
+         {
+            return String.Empty;
+         }
+
+         return builder.ToString();
+        }
 
         /// <summary>
         /// Restarts the Steam.exe process
@@ -636,7 +662,7 @@ namespace UWPHook
 
             if (steam != null)
             {
-                string steamExe = steam.MainModule.FileName;
+                string steamExe = GetProcessFilename(steam);
 
                 //we always ask politely
                 Log.Debug("Requesting Steam shutdown");

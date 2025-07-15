@@ -135,6 +135,12 @@ namespace UWPHook.SteamGridDb
 
             return await getResponse(path);
         }
+        public async Task<ImageResponse[]> GetGameIcons(int gameId, string dimensions = null)
+        {
+            string path = $"icons/game/{gameId}?{BuildParameters(dimensions)}";
+
+            return await getResponse(path);
+        }
 
         private class ResponseWrapper<T>
         {
